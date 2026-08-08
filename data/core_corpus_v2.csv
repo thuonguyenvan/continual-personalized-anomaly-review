@@ -1,0 +1,28 @@
+paper_id,year,title,venue,quality_tier,branch,continual_or_online,one_class_or_ad,video_or_skeleton,personalization,human_feedback,safety_or_contamination,key_relevance,status
+C01,2018,"Deep One-Class Classification",ICML,A*,one_class,no,yes,no,no,no,no,"Foundational deep one-class objective",core
+C02,2020,"Timeseries Anomaly Detection using Temporal Hierarchical One-Class Network",NeurIPS,A*,one_class_temporal,no,yes,temporal,no,no,no,"Temporal one-class modeling with hierarchical hyperspheres",core
+C03,2022,"OneFlow: One-Class Flow for Anomaly Detection Based on a Minimal Volume Region",TPAMI,Q1,one_class,no,yes,no,no,no,no,"Explicit learned normal-region boundary",core
+C04,2020,"Self-Trained Deep Ordinal Regression for End-to-End Video Anomaly Detection",CVPR,A*,video_ad,no,yes,video,no,yes,partial,"Main-track human-in-the-loop VAD precedent",core
+C05,2022,"MemStream: Memory-Based Streaming Anomaly Detection",The Web Conference,A*,streaming_ad,yes,yes,no,no,no,yes,"Concept drift, dynamic memory, and memory-poisoning robustness",core
+C06,2025,"One-for-More: Continual Diffusion Model for Anomaly Detection",CVPR,A*,continual_ad,yes,yes,image,no,no,partial,"Direct top-tier continual anomaly detection precedent",core
+C07,2025,"Toward Long-Tailed Online Anomaly Detection through Class-Agnostic Concepts",ICCV,A*,online_ad,yes,yes,image,no,no,no,"Direct online anomaly learning under realistic stream assumptions",core
+C08,2025,"RareCLIP: Rarity-aware Online Zero-shot Industrial Anomaly Detection",ICCV,A*,online_ad,yes,yes,image,no,no,partial,"Online prototype memory and sequential rarity estimation",core
+C09,2024,"Contamination-Resilient Anomaly Detection via Adversarial Learning on Partially-Observed Normal and Anomalous Data",ICML,A*,robust_ad,no,yes,no,no,partial,yes,"Shows contamination robustness is already a top-tier AD problem",core
+C10,2025,"An Evidence-Based Post-Hoc Adjustment Framework for Anomaly Detection Under Data Contamination",NeurIPS,A*,robust_ad,adaptation,yes,no,no,no,yes,"Test-time adjustment under contaminated AD training",core
+C11,2021,"Class-Incremental Learning for Action Recognition in Videos",ICCV,A*,video_cl,yes,no,video,no,no,no,"Establishes video continual learning",core
+C12,2022,"vCLIMB: A Novel Video Class Incremental Learning Benchmark",CVPR,A*,video_cl,yes,no,video,no,no,no,"Video continual benchmark and replay/temporal memory evidence",core
+C13,2023,"Space-time Prompting for Video Class-incremental Learning",ICCV,A*,video_cl,yes,no,video,no,no,no,"Parameter-efficient video continual learning",core
+C14,2021,"Else-Net: Elastic Semantic Network for Continual Action Recognition From Skeleton Data",ICCV,A*,skeleton_cl,yes,no,skeleton,no,no,no,"Direct skeleton continual-learning precedent",core
+C15,2023,"Data-Free Class-Incremental Hand Gesture Recognition",ICCV,A*,skeleton_cl,yes,no,skeleton,partial,no,partial,"Privacy-aware skeleton continual learning",core
+C16,2018,"Personalized Human Activity Recognition Using Convolutional Neural Networks",AAAI,A*,personalized_har,no,no,sensor,yes,yes,no,"Strong precedent for user-specific HAR personalization with minimal supervision",core
+C17,2025,"ConSense: Continually Sensing Human Activity with WiFi via Growing and Picking",AAAI,A*,continual_har,yes,no,sensor,partial,no,partial,"Continual HAR under privacy/storage constraints",core
+C18,2025,"Generalizable Sensor-Based Activity Recognition via Categorical Concept Invariant Learning",AAAI,A*,har_domain_shift,no,no,sensor,subject_shift,no,no,"Directly motivates inter-subject behavioral distribution shift",core
+C19,2025,"MobHAR: Source-free Knowledge Transfer for Human Activity Recognition on Mobile Devices",IMWUT,Q1,har_adaptation,adaptation,no,sensor,partial,no,partial,"Source-free HAR adaptation under non-IID deployment shift",core
+C20,2024,"MedBN: Robust Test-Time Adaptation against Malicious Test Samples",CVPR,A*,safe_tta,adaptation,no,image,no,no,yes,"Demonstrates adaptation vulnerability to unsafe/malicious samples",core
+C21,2025,"Realistic Test-Time Adaptation of Vision-Language Models",CVPR,A*,tta,adaptation,no,image,no,no,yes,"Shows adaptation can sacrifice source robustness under realistic non-IID streams",core
+C22,2025,"Hybrid-TTA: Continual Test-time Adaptation via Dynamic Domain Shift Detection",ICCV,A*,continual_tta,yes,no,image,no,no,partial,"Explicit adaptation-stabilization trade-off in continual deployment",core
+C23,2024,"Efficient Test-Time Adaptation of Vision-Language Models",CVPR,A*,tta,adaptation,no,image,no,no,partial,"Dynamic memory/pseudo-label adaptation with noise mitigation",core
+C24,2023,"Improved Test-Time Adaptation for Domain Generalization",CVPR,A*,tta,adaptation,no,image,no,no,partial,"Shows poorly chosen test-time updates can be detrimental",core
+C25,2024,"Improved Self-Training for Test-Time Adaptation",CVPR,A*,tta,adaptation,no,image,no,no,partial,"Pseudo-label correction and anti-forgetting during adaptation",core
+C26,2024,"Open-Vocabulary Video Anomaly Detection",CVPR,A*,video_ad,no,yes,video,no,no,no,"Open-world anomaly semantics; related but distinct from evolving normality",core
+C27,2025,"Anomize: Better Open Vocabulary Video Anomaly Detection",CVPR,A*,video_ad,no,yes,video,no,no,no,"Recent high-quality open-vocabulary VAD competitor branch",core
