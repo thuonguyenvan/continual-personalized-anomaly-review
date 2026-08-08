@@ -1,0 +1,28 @@
+seed: 1337
+
+dataset:
+  name: NTU_RGBD_120
+  modality: skeleton_xyz
+  skeleton_root: /path/to/nturgbd120_skeletons
+  target_len: 64
+  official_cross_subject: true
+
+roles:
+  global_normal_actions: [1, 2, 6, 8, 9, 11, 12, 23, 25, 28, 29, 33, 34, 35, 36, 37, 40, 80, 96, 97, 98, 99, 100, 101]
+  candidate_personal_normal_actions: [42]
+  protected_anomaly_actions: [43]
+
+personalization:
+  sessions: 5
+  feedback_budgets: [1, 5, 10]
+  order_seeds: [101, 202, 303]
+
+baseline:
+  detector: prototype_distance
+  threshold_quantile: 0.95
+  prototype_alpha: 0.5
+
+outputs:
+  root: outputs/ntu120_pilot_v0.1
+  save_per_sample_scores: true
+  save_per_subject_metrics: true
