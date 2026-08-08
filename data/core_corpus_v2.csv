@@ -26,3 +26,8 @@ C24,2023,"Improved Test-Time Adaptation for Domain Generalization",CVPR,A*,tta,a
 C25,2024,"Improved Self-Training for Test-Time Adaptation",CVPR,A*,tta,adaptation,no,image,no,no,partial,"Pseudo-label correction and anti-forgetting during adaptation",core
 C26,2024,"Open-Vocabulary Video Anomaly Detection",CVPR,A*,video_ad,no,yes,video,no,no,no,"Open-world anomaly semantics; related but distinct from evolving normality",core
 C27,2025,"Anomize: Better Open Vocabulary Video Anomaly Detection",CVPR,A*,video_ad,no,yes,video,no,no,no,"Recent high-quality open-vocabulary VAD competitor branch",core
+C28,2022,"Continual Test-Time Domain Adaptation",CVPR,A*,continual_tta,yes,no,image,no,no,yes,"Canonical CTTA work on error accumulation and catastrophic forgetting",core
+C29,2023,"Robust Test-Time Adaptation in Dynamic Scenarios",CVPR,A*,continual_tta,yes,no,image,no,no,yes,"Dynamic-stream adaptation with memory, timeliness and uncertainty",core
+C30,2023,"Robust Mean Teacher for Continual and Gradual Test-Time Adaptation",CVPR,A*,continual_tta,yes,no,image,no,no,yes,"Error-accumulation control in long continual adaptation sequences",core
+C31,2023,"A Probabilistic Framework for Lifelong Test-Time Adaptation",CVPR,A*,continual_tta,yes,no,image,no,no,yes,"Uncertainty-aware lifelong adaptation and drift prevention",core
+C32,2024,"Learning from One Continuous Video Stream",CVPR,A*,continuous_video,yes,no,video,partial,no,partial,"Deployment-realistic single-stream learning protocol; explicitly motivates user adaptation",core
