@@ -1,0 +1,12 @@
+paper_id,year,title,venue,continual,new_normal,personalization,human_feedback,repeated_sessions,safety_or_contamination,video_or_skeleton,closest_relevance,novelty_threat
+P01,2024,"When Model Meets New Normals: Test-Time Adaptation for Unsupervised Time-Series Anomaly Detection",AAAI,yes,yes,no,no,yes,partial,no,"Directly studies evolving/new normal after deployment; closest conceptual precedent for normality adaptation",high
+P02,2026,"CANDI: Curated Test-Time Adaptation for Multivariate Time-Series Anomaly Detection Under Distribution Shift",AAAI,yes,yes,no,no,yes,partial,no,"Mines likely false positives as adaptation samples while preserving pretrained knowledge",very_high
+P03,2025,"One-for-More: Continual Diffusion Model for Anomaly Detection",CVPR,yes,partial,no,no,yes,partial,no,"Direct continual anomaly detection with catastrophic-forgetting protection",high
+P04,2025,"DFM: Differentiable Feature Matching for Anomaly Detection",CVPR,yes,partial,no,no,yes,no,no,"Reports SOTA continual anomaly detection results; important method competitor in CAD branch",medium_high
+P05,2022,"MemStream: Memory-Based Streaming Anomaly Detection",The Web Conference,yes,yes,no,no,yes,yes,no,"Streaming concept drift with dynamic normal memory and memory-poisoning robustness",high
+P06,2024,"Taming False Positives in Out-of-Distribution Detection with Human Feedback",AISTATS,yes,no,no,yes,yes,yes,no,"Uses expert feedback to safely update OOD decision threshold with FPR control",very_high
+P07,2024,"Contamination-Resilient Anomaly Detection via Adversarial Learning on Partially-Observed Normal and Anomalous Data",ICML,no,no,no,partial,no,yes,no,"Shows protected learning of normal distribution under contaminated supervision",high
+P08,2020,"Self-Trained Deep Ordinal Regression for End-to-End Video Anomaly Detection",CVPR,partial,no,no,yes,partial,partial,video,"Main-track human-in-the-loop VAD precedent",high
+P09,2022,"Continual Test-Time Domain Adaptation",CVPR,yes,no,no,no,yes,yes,no,"Canonical stability/plasticity and error-accumulation control under continual shift",medium
+P10,2023,"Robust Test-Time Adaptation in Dynamic Scenarios",CVPR,yes,no,no,no,yes,yes,no,"Dynamic memory plus uncertainty/timeliness under correlated streams",medium
+P11,2023,"A Probabilistic Framework for Lifelong Test-Time Adaptation",CVPR,yes,no,no,no,yes,yes,no,"Lifelong shift, uncertainty, source regularization and parameter restoration",medium
