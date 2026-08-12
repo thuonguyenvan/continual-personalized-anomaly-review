@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 
@@ -11,11 +12,18 @@ def save_line(summary: pd.DataFrame, metric: str, ylabel: str, out: Path) -> Non
     plt.figure(figsize=(7, 4.5))
     for (method, budget), g in summary.groupby(["method", "budget"], sort=True):
         g = g.sort_values("session")
-        x = g["session"]
-        y = g[f"{metric}_mean"]
-        e = g.get(f"{metric}_ci95")
+        x = g["session"].to_numpy(dtype=float)
+        y = g[f"{metric}_mean"].to_numpy(dtype=float)
+        lo_col = f"{metric}_boot_low"
+        hi_col = f"{metric}_boot_high"
         label = f"{method}, K={budget}"
-        if e is not None:
+        if lo_col in g.columns and hi_col in g.columns:
+            lo = g[lo_col].to_numpy(dtype=float)
+            hi = g[hi_col].to_numpy(dtype=float)
+            yerr = np.vstack([np.maximum(0.0, y - lo), np.maximum(0.0, hi - y)])
+            plt.errorbar(x, y, yerr=yerr, marker="o", capsize=2, label=label)
+        elif f"{metric}_ci95" in g.columns:
+            e = g[f"{metric}_ci95"].to_numpy(dtype=float)
             plt.errorbar(x, y, yerr=e, marker="o", capsize=2, label=label)
         else:
             plt.plot(x, y, marker="o", label=label)
