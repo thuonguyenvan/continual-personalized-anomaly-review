@@ -10,7 +10,9 @@ EXPECTED_COLUMNS = {
     "path", "setup", "camera", "subject", "repetition", "action",
     "outer_split", "inner_split", "role",
 }
-VALID_INNER = {"dev_train", "dev_val", "deployment_test"}
+VALID_INNER = {
+    "encoder_train", "encoder_val", "detector_calib", "retention_val", "deployment_test"
+}
 VALID_OUTER = {"train", "test"}
 VALID_ROLES = {
     "global_normal", "candidate_personal_normal", "protected_anomaly", "excluded"
@@ -33,11 +35,9 @@ def main() -> None:
         missing = EXPECTED_COLUMNS - cols
         if missing:
             raise SystemExit(f"FAIL: missing columns: {sorted(missing)}")
-
         rows = list(reader)
 
     errors: list[str] = []
-    warnings: list[str] = []
 
     if len(rows) != args.expected_rows:
         errors.append(f"row count {len(rows)} != expected {args.expected_rows}")
@@ -61,6 +61,10 @@ def main() -> None:
     if bad_roles:
         errors.append(f"invalid role values: {bad_roles}")
 
+    missing_inner = sorted(VALID_INNER - set(inner_counts))
+    if missing_inner:
+        errors.append(f"missing required inner splits: {missing_inner}")
+
     subject_inner: dict[int, set[str]] = defaultdict(set)
     subject_outer: dict[int, set[str]] = defaultdict(set)
     action_roles: dict[int, set[str]] = defaultdict(set)
@@ -81,12 +85,11 @@ def main() -> None:
             if len(errors) > 20:
                 break
 
-    leaked_subjects = {
-        s: splits for s, splits in subject_inner.items()
-        if "deployment_test" in splits and ("dev_train" in splits or "dev_val" in splits)
-    }
-    if leaked_subjects:
-        errors.append(f"subject leakage across dev/deployment splits: {leaked_subjects}")
+    # Every subject must belong to exactly one inner split. This is stricter than
+    # merely checking train/test leakage and protects calibration/evaluation roles.
+    mixed_inner = {s: x for s, x in subject_inner.items() if len(x) > 1}
+    if mixed_inner:
+        errors.append(f"subjects assigned to multiple inner splits: {mixed_inner}")
 
     mixed_outer = {s: x for s, x in subject_outer.items() if len(x) > 1}
     if mixed_outer:
@@ -109,17 +112,16 @@ def main() -> None:
         if missing_files:
             errors.append("missing skeleton files (first up to 10): " + "; ".join(missing_files))
 
+    subject_split_counts = Counter(next(iter(v)) for v in subject_inner.values())
+
     print(f"rows: {len(rows)}")
     print(f"subjects: {len(subject_inner)}")
     print(f"actions: {len(action_roles)}")
     print(f"outer_split_counts: {dict(sorted(outer_counts.items()))}")
     print(f"inner_split_counts: {dict(sorted(inner_counts.items()))}")
+    print(f"subject_inner_split_counts: {dict(sorted(subject_split_counts.items()))}")
     print(f"role_counts: {dict(sorted(role_counts.items()))}")
     print(f"duplicate_paths: {duplicate_paths}")
-
-    if warnings:
-        for w in warnings:
-            print(f"WARN: {w}")
 
     if errors:
         print("\nPRECHECK FAILED")
