@@ -174,12 +174,10 @@ def main() -> None:
                         ps = [global_proto] + ([] if personal_proto is None else [personal_proto])
                         return distance_scores(zz, ps)
 
-                    # initialize B3 once on population normality
                     if method == "B3":
                         oc_model = fit_ocsvm(z_train_oc, args.ocsvm_nu, args.ocsvm_gamma)
                         threshold = quantile_threshold(ocsvm_scores(oc_model, z_val), args.threshold_quantile)
 
-                    # Session 0: pre-personalization reference.
                     p_scores = current_scores(p_idx)
                     s_scores = current_scores(s_idx)
                     g_scores = ocsvm_scores(oc_model, z_val) if method == "B3" else distance_scores(z_val, [global_proto] + ([] if personal_proto is None else [personal_proto]))
@@ -200,7 +198,6 @@ def main() -> None:
                         else:
                             false_alarm_idx = np.empty(0, dtype=np.int64)
 
-                        # Simulated caregiver confirms only model-raised false alarms.
                         rng = np.random.default_rng(seed * 1000003 + subject * 9176 + budget * 101 + t)
                         if len(false_alarm_idx) > budget:
                             chosen = rng.choice(false_alarm_idx, size=budget, replace=False)
@@ -209,19 +206,20 @@ def main() -> None:
                         confirmed.extend(int(x) for x in chosen)
 
                         if method == "B1" and confirmed:
-                            # Threshold-only: keep representation/boundary fixed, raise/lower threshold
-                            # using population validation normals + confirmed personal normals.
+                            # A threshold-only baseline must actually respond to sparse personal feedback.
+                            # Mixing a handful of confirmed samples into thousands of dev-val samples makes
+                            # their influence effectively zero. Instead keep the population threshold as a
+                            # lower bound and move it to the personal-normal quantile when necessary.
                             c_scores = distance_scores(z[np.asarray(confirmed)], [global_proto])
-                            threshold = quantile_threshold(np.concatenate([base_val_scores, c_scores]), args.threshold_quantile)
+                            personal_threshold = quantile_threshold(c_scores, args.threshold_quantile)
+                            threshold = max(base_threshold, personal_threshold)
                         elif method == "B2" and confirmed:
                             personal_proto = centroid(z[np.asarray(confirmed)])
-                            # Recalibrate on retained global normals under dual-prototype scoring.
                             threshold = quantile_threshold(distance_scores(z_val, [global_proto, personal_proto]), args.threshold_quantile)
                         elif method == "B3" and confirmed:
                             fit_z = np.concatenate([z_train_oc, z[np.asarray(confirmed)]], axis=0)
                             oc_model = fit_ocsvm(fit_z, args.ocsvm_nu, args.ocsvm_gamma)
                             threshold = quantile_threshold(ocsvm_scores(oc_model, z_val), args.threshold_quantile)
-                        # B0 deliberately does nothing.
 
                         confirmed_set = set(confirmed)
                         remaining = np.asarray([i for i in p_idx if int(i) not in confirmed_set], dtype=np.int64)
@@ -242,7 +240,6 @@ def main() -> None:
     if not output_rows:
         raise RuntimeError("no baseline results produced")
 
-    # Fill session-0 derived fields consistently.
     for r in output_rows:
         r.setdefault("personal_gain", 0.0)
         r.setdefault("safety_drop", 0.0)
