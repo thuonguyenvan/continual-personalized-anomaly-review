@@ -10,7 +10,7 @@ import numpy as np
 
 try:
     from sklearn.svm import OneClassSVM
-except ImportError:  # optional dependency until B3 is requested
+except ImportError:
     OneClassSVM = None
 
 
@@ -87,14 +87,13 @@ def fit_ocsvm(z_train: np.ndarray, nu: float, gamma: str):
 
 
 def ocsvm_scores(model, z: np.ndarray) -> np.ndarray:
-    # sklearn: positive means inlier; convert so larger = more anomalous.
     return -model.decision_function(z).reshape(-1)
 
 
-def evaluate(scores_personal, scores_safe, scores_global, threshold):
+def evaluate(scores_personal, scores_safe, scores_global_retention, threshold):
     recall, fnr = safe_rate(scores_safe, threshold)
     p_fpr = fpr(scores_personal, threshold)
-    g_fpr = fpr(scores_global, threshold)
+    g_fpr = fpr(scores_global_retention, threshold)
     p_mean = float(np.mean(scores_personal)) if len(scores_personal) else float("nan")
     s_mean = float(np.mean(scores_safe)) if len(scores_safe) else float("nan")
     return {
@@ -115,7 +114,7 @@ def main() -> None:
     ap.add_argument("--out", default="outputs/ntu120_pilot_v0.1/baselines/frozen_baselines.csv")
     ap.add_argument("--methods", nargs="+", default=["B0", "B1", "B2", "B3"], choices=["B0", "B1", "B2", "B3"])
     ap.add_argument("--sessions", type=int, default=5)
-    ap.add_argument("--budgets", nargs="+", type=int, default=[1, 5, 10])
+    ap.add_argument("--budgets", nargs="+", type=int, default=[1, 2, 5])
     ap.add_argument("--order-seeds", nargs="+", type=int, default=[101, 202, 303])
     ap.add_argument("--threshold-quantile", type=float, default=0.95)
     ap.add_argument("--ocsvm-nu", type=float, default=0.05)
@@ -126,22 +125,23 @@ def main() -> None:
     tab = load_embeddings(args.embeddings, args.metadata)
     rows, z = tab.rows, tab.z
 
-    m_train = mask_rows(rows, inner_split="dev_train", role="global_normal")
-    m_val = mask_rows(rows, inner_split="dev_val", role="global_normal")
+    m_train = mask_rows(rows, inner_split="encoder_train", role="global_normal")
+    m_calib = mask_rows(rows, inner_split="detector_calib", role="global_normal")
+    m_retention = mask_rows(rows, inner_split="retention_val", role="global_normal")
     m_deploy = mask_rows(rows, inner_split="deployment_test")
     z_train = z[m_train]
-    z_val = z[m_val]
-    if len(z_train) == 0 or len(z_val) == 0:
-        raise RuntimeError("empty global dev_train/dev_val embedding partitions")
+    z_calib = z[m_calib]
+    z_retention = z[m_retention]
+    if min(len(z_train), len(z_calib), len(z_retention)) == 0:
+        raise RuntimeError("empty encoder_train/detector_calib/retention_val partition; regenerate manifest")
 
     global_proto = centroid(z_train)
-    base_val_scores = distance_scores(z_val, [global_proto])
-    base_threshold = quantile_threshold(base_val_scores, args.threshold_quantile)
+    base_calib_scores = distance_scores(z_calib, [global_proto])
+    base_threshold = quantile_threshold(base_calib_scores, args.threshold_quantile)
 
     deploy_subjects = sorted({int(r["subject"]) for i, r in enumerate(rows) if m_deploy[i]})
     output_rows: List[Dict[str, object]] = []
 
-    # Fixed subset for B3 runtime/reproducibility.
     if len(z_train) > args.ocsvm_max_global_train:
         rng_global = np.random.default_rng(1337)
         keep = rng_global.choice(len(z_train), size=args.ocsvm_max_global_train, replace=False)
@@ -176,11 +176,11 @@ def main() -> None:
 
                     if method == "B3":
                         oc_model = fit_ocsvm(z_train_oc, args.ocsvm_nu, args.ocsvm_gamma)
-                        threshold = quantile_threshold(ocsvm_scores(oc_model, z_val), args.threshold_quantile)
+                        threshold = quantile_threshold(ocsvm_scores(oc_model, z_calib), args.threshold_quantile)
 
                     p_scores = current_scores(p_idx)
                     s_scores = current_scores(s_idx)
-                    g_scores = ocsvm_scores(oc_model, z_val) if method == "B3" else distance_scores(z_val, [global_proto] + ([] if personal_proto is None else [personal_proto]))
+                    g_scores = ocsvm_scores(oc_model, z_retention) if method == "B3" else distance_scores(z_retention, [global_proto])
                     met0 = evaluate(p_scores, s_scores, g_scores, threshold)
                     output_rows.append({
                         "subject": subject, "order_seed": seed, "budget": budget, "method": method,
@@ -206,27 +206,30 @@ def main() -> None:
                         confirmed.extend(int(x) for x in chosen)
 
                         if method == "B1" and confirmed:
-                            # A threshold-only baseline must actually respond to sparse personal feedback.
-                            # Mixing a handful of confirmed samples into thousands of dev-val samples makes
-                            # their influence effectively zero. Instead keep the population threshold as a
-                            # lower bound and move it to the personal-normal quantile when necessary.
                             c_scores = distance_scores(z[np.asarray(confirmed)], [global_proto])
                             personal_threshold = quantile_threshold(c_scores, args.threshold_quantile)
                             threshold = max(base_threshold, personal_threshold)
                         elif method == "B2" and confirmed:
                             personal_proto = centroid(z[np.asarray(confirmed)])
-                            threshold = quantile_threshold(distance_scores(z_val, [global_proto, personal_proto]), args.threshold_quantile)
+                            threshold = quantile_threshold(
+                                distance_scores(z_calib, [global_proto, personal_proto]),
+                                args.threshold_quantile,
+                            )
                         elif method == "B3" and confirmed:
                             fit_z = np.concatenate([z_train_oc, z[np.asarray(confirmed)]], axis=0)
                             oc_model = fit_ocsvm(fit_z, args.ocsvm_nu, args.ocsvm_gamma)
-                            threshold = quantile_threshold(ocsvm_scores(oc_model, z_val), args.threshold_quantile)
+                            threshold = quantile_threshold(ocsvm_scores(oc_model, z_calib), args.threshold_quantile)
 
                         confirmed_set = set(confirmed)
                         remaining = np.asarray([i for i in p_idx if int(i) not in confirmed_set], dtype=np.int64)
                         p_eval = remaining if len(remaining) else p_idx
                         p_scores = current_scores(p_eval)
                         s_scores = current_scores(s_idx)
-                        g_scores = ocsvm_scores(oc_model, z_val) if method == "B3" else distance_scores(z_val, [global_proto] + ([] if personal_proto is None else [personal_proto]))
+                        if method == "B3":
+                            g_scores = ocsvm_scores(oc_model, z_retention)
+                        else:
+                            ps = [global_proto] + ([] if personal_proto is None else [personal_proto])
+                            g_scores = distance_scores(z_retention, ps)
                         met = evaluate(p_scores, s_scores, g_scores, threshold)
                         output_rows.append({
                             "subject": subject, "order_seed": seed, "budget": budget, "method": method,
@@ -252,11 +255,15 @@ def main() -> None:
         w.writeheader()
         w.writerows(output_rows)
 
-    personal_counts = [sum(1 for r in rows if r["inner_split"] == "deployment_test" and r["role"] == "candidate_personal_normal" and int(r["subject"]) == s) for s in deploy_subjects]
+    personal_counts = [
+        sum(1 for r in rows if r["inner_split"] == "deployment_test"
+            and r["role"] == "candidate_personal_normal" and int(r["subject"]) == s)
+        for s in deploy_subjects
+    ]
     print(f"subjects: {len(deploy_subjects)}")
     print(f"personal_samples_per_subject: min={min(personal_counts)} median={float(np.median(personal_counts)):.1f} max={max(personal_counts)}")
     if max(args.budgets) > max(personal_counts):
-        print("WARNING: at least one requested feedback budget exceeds the total personal-normal samples available for a subject; inspect feedback_used and consider smaller NTU-specific budgets.")
+        print("WARNING: a requested feedback budget exceeds total personal-normal samples for at least one subject; inspect feedback_used.")
     print(f"rows_written: {len(output_rows)}")
     print(f"output: {out}")
 
