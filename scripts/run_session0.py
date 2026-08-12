@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from src.datasets.manifest_dataset import NTUManifestDataset
 from src.metrics.anomaly_metrics import binary_metrics, score_margin, threshold_from_quantile
-from src.models.prototype_detector import PrototypeDistanceDetector
+from src.models.prototype_detector import PrototypeDetector
 from src.models.simple_skeleton_encoder import SimpleSkeletonEncoder
 
 
@@ -80,12 +80,16 @@ def main():
     if z_train.numel() == 0 or z_val.numel() == 0 or z_test.numel() == 0:
         raise RuntimeError("One or more required dataset partitions are empty. Check manifest roles/splits.")
 
-    detector = PrototypeDistanceDetector()
-    detector.fit(z_train)
+    z_train_np = z_train.numpy()
+    z_val_np = z_val.numpy()
+    z_test_np = z_test.numpy()
 
-    val_scores = detector.score(z_val).cpu().numpy()
+    detector = PrototypeDetector()
+    detector.fit(z_train_np, threshold_quantile=args.threshold_quantile)
+
+    val_scores = detector.score_samples(z_val_np)
     threshold = threshold_from_quantile(val_scores, q=args.threshold_quantile)
-    test_scores = detector.score(z_test).cpu().numpy()
+    test_scores = detector.score_samples(z_test_np)
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
