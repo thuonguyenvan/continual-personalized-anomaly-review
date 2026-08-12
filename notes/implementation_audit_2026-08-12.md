@@ -1,6 +1,6 @@
 # Implementation Audit — 2026-08-12
 
-This note records issues found while hardening the NTU RGB+D 120 pilot before full GPU runs. It is intentionally skeptical: passing code is not equivalent to validating the research hypothesis.
+This note records issues found while hardening the NTU RGB+D 120 pilot before full GPU runs. Passing code is not equivalent to validating the research hypothesis.
 
 ## Resolved engineering mismatches
 
@@ -10,35 +10,52 @@ This note records issues found while hardening the NTU RGB+D 120 pilot before fu
 4. Session-0 originally allowed a random encoder. This was removed; a trained checkpoint is now required.
 5. `PYTHONPATH=.` is currently required when invoking scripts directly. Proper packaging remains a later engineering cleanup item.
 
+## Resolved methodological leakage risk: reused validation subjects
+
+The first implementation reused the same `dev_val` subjects for three distinct purposes:
+
+- selecting the encoder checkpoint;
+- calibrating the anomaly threshold;
+- measuring global-normal retention FPR.
+
+This is not deployment-test leakage, but it makes retention performance optimistic by evaluating on the same subjects used for threshold calibration and also couples representation model selection to detector calibration.
+
+The manifest protocol has therefore been changed. The 53 official NTU120 cross-subject training subjects are now deterministically partitioned by subject into:
+
+- `encoder_train`: 37 subjects;
+- `encoder_val`: 6 subjects, used only for encoder checkpoint selection;
+- `detector_calib`: 5 subjects, used only for anomaly-threshold calibration;
+- `retention_val`: 5 subjects, used only for global-normal retention evaluation.
+
+The 53 official cross-subject test subjects remain `deployment_test` and are never used for representation training, checkpoint selection, or initial threshold calibration.
+
+After pulling this change, the old manifest must be regenerated before any full experiment. Results produced with the old `dev_train/dev_val` manifest must not be mixed with results from the hardened protocol.
+
 ## Data integrity status
 
-The local preflight reported:
+The earlier local preflight reported:
 
 - 114,480 rows;
 - 106 subjects;
 - 120 actions;
 - 0 duplicate paths;
 - 63,360 outer-train / 51,120 outer-test samples;
-- 51,840 dev-train / 11,520 dev-val / 51,120 deployment-test samples;
 - 22,836 global-normal samples;
 - 948 candidate-personal-normal (A42) samples;
 - 948 protected-anomaly (A43) samples.
 
-This validates indexing/split integrity only. It does not validate the scientific semantics of the action-role assignment.
+The exact inner-split sample counts must be re-reported after regenerating the hardened manifest. Data-integrity checks validate indexing/split integrity only; they do not validate the scientific semantics of action-role assignment.
 
 ## Major protocol issue: feedback budget granularity
 
-There are only 948 A42 samples across 106 subjects, i.e. roughly nine candidate-personal-normal clips per subject on average. With five simulated sessions, a nominal feedback budget of `K=5` or `K=10` per session can easily exceed the number of available false alarms/samples in a session.
+There are only 948 A42 samples across 106 subjects, i.e. roughly nine candidate-personal-normal clips per subject on average. With five simulated sessions, nominal budgets such as `K=5` or `K=10` can exceed available false alarms in a session.
 
 Therefore:
 
 - every result must report `feedback_available`, `feedback_used`, and `confirmed_cumulative`;
 - nominal `K` must never be interpreted as actual human annotation count;
-- the first NTU-specific run should inspect per-subject counts before deciding final budgets;
-- smaller budgets such as `K=1` and possibly `K=2` are likely more interpretable on NTU120;
-- `K=5/10` may remain only as saturation/sensitivity settings if the realized counts are explicitly reported.
-
-Do not silently retain `K=1,5,10` in the final paper without this check.
+- the default frozen-baseline budgets are now `K=1,2,5`;
+- `K=5` is best interpreted as a saturation/sensitivity setting unless realized feedback counts support it.
 
 ## Major scientific caveats
 
@@ -54,6 +71,10 @@ Do not silently retain `K=1,5,10` in the final paper without this check.
 
 NTU120 is not a longitudinal deployment dataset. Session orderings are deterministic pseudo-sessions generated from available subject clips. Conclusions must be limited to a simulated continual-personalization protocol, not real temporal drift.
 
+### Personal-normal evaluation is pool-based
+
+After feedback, confirmed samples are removed from the personal-normal evaluation pool, but the remaining pool can contain both already-arrived unconfirmed clips and future pseudo-session clips. Therefore `personal_fpr` is currently a residual-pool metric, not a strict future-only longitudinal generalization metric. The final paper must either state this explicitly or add a separate future-only/held-out evaluation design if data volume permits.
+
 ### Supervised normal-action representation
 
 The current `SimpleSkeletonEncoder` is trained with action-class supervision using only global-normal action classes. The anomaly detector itself remains one-class, but the complete representation-learning pipeline is not an end-to-end one-class training procedure. This is acceptable for a mechanism pilot, but should not be described as a pure one-class neural training pipeline.
@@ -61,11 +82,11 @@ The current `SimpleSkeletonEncoder` is trained with action-class supervision usi
 ## Frozen-baseline design decisions
 
 - B0: no adaptation.
-- B1: threshold-only adaptation; population threshold is retained as a lower bound and personal-normal feedback can raise it. This deliberately tests whether a trivial calibration solution removes the need for continual representation/boundary adaptation.
-- B2: global + personal dual prototype; threshold recalibrated on retained global-normal validation embeddings.
-- B3: One-Class SVM refit with global-normal embeddings plus confirmed personal normals; global-normal validation data recalibrate the threshold.
+- B1: threshold-only adaptation; the population-calibrated threshold is retained as a lower bound and confirmed personal-normal feedback can raise it.
+- B2: global + personal dual prototype; threshold is recalibrated only on `detector_calib`, while global retention is measured only on `retention_val`.
+- B3: One-Class SVM refit with `encoder_train` global-normal embeddings plus confirmed personal normals; threshold is recalibrated on `detector_calib`, while global retention is measured on `retention_val`.
 
-Only model-raised A42 false alarms are eligible for simulated caregiver confirmation. Confirmed samples are removed from subsequent personal-normal evaluation to avoid evaluating directly on the feedback items.
+Only model-raised A42 false alarms are eligible for simulated caregiver confirmation. Confirmed samples are removed from subsequent personal-normal evaluation to avoid evaluating directly on feedback items.
 
 ## Go / stop interpretation
 
