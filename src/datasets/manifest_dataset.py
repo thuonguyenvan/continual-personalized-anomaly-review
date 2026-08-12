@@ -9,36 +9,36 @@ import torch
 from torch.utils.data import Dataset
 
 from src.datasets.ntu120 import read_skeleton_file
-from src.preprocessing.skeleton import preprocess_skeleton_sequence
+from src.preprocessing.skeleton import preprocess_skeleton
 
 
 @dataclass(frozen=True)
 class ManifestRecord:
     path: str
-    subject_id: int
-    action_id: int
-    setup_id: int
-    camera_id: int
-    repetition_id: int
-    split: str
+    subject: int
+    action: int
+    setup: int
+    camera: int
+    repetition: int
+    outer_split: str
+    inner_split: str
     role: str
 
 
 class NTUManifestDataset(Dataset):
-    """Dataset backed by a CSV manifest.
+    """Dataset backed by the manifest produced by make_ntu120_manifest.py.
 
     Expected columns:
-      path, subject_id, action_id, setup_id, camera_id, repetition_id, split, role
-
-    `role` should be one of values such as:
-      global_normal, personal_normal, protected_anomaly, excluded
+      path, setup, camera, subject, repetition, action,
+      outer_split, inner_split, role
     """
 
     def __init__(
         self,
         manifest_path: str | Path,
         root_dir: str | Path,
-        split: Optional[str] = None,
+        inner_split: Optional[str] = None,
+        outer_split: Optional[str] = None,
         roles: Optional[List[str]] = None,
         subject_ids: Optional[List[int]] = None,
         seq_len: int = 64,
@@ -56,14 +56,8 @@ class NTUManifestDataset(Dataset):
         with self.manifest_path.open("r", newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             required = {
-                "path",
-                "subject_id",
-                "action_id",
-                "setup_id",
-                "camera_id",
-                "repetition_id",
-                "split",
-                "role",
+                "path", "setup", "camera", "subject", "repetition", "action",
+                "outer_split", "inner_split", "role",
             }
             missing = required - set(reader.fieldnames or [])
             if missing:
@@ -72,19 +66,22 @@ class NTUManifestDataset(Dataset):
             for row in reader:
                 record = ManifestRecord(
                     path=row["path"],
-                    subject_id=int(row["subject_id"]),
-                    action_id=int(row["action_id"]),
-                    setup_id=int(row["setup_id"]),
-                    camera_id=int(row["camera_id"]),
-                    repetition_id=int(row["repetition_id"]),
-                    split=row["split"],
+                    setup=int(row["setup"]),
+                    camera=int(row["camera"]),
+                    subject=int(row["subject"]),
+                    repetition=int(row["repetition"]),
+                    action=int(row["action"]),
+                    outer_split=row["outer_split"],
+                    inner_split=row["inner_split"],
                     role=row["role"],
                 )
-                if split is not None and record.split != split:
+                if inner_split is not None and record.inner_split != inner_split:
+                    continue
+                if outer_split is not None and record.outer_split != outer_split:
                     continue
                 if role_set is not None and record.role not in role_set:
                     continue
-                if subject_set is not None and record.subject_id not in subject_set:
+                if subject_set is not None and record.subject not in subject_set:
                     continue
                 records.append(record)
 
@@ -93,11 +90,17 @@ class NTUManifestDataset(Dataset):
     def __len__(self) -> int:
         return len(self.records)
 
+    def _resolve_path(self, record_path: str) -> Path:
+        p = Path(record_path)
+        if p.is_absolute():
+            return p
+        return self.root_dir / p
+
     def __getitem__(self, index: int) -> Dict[str, object]:
         record = self.records[index]
-        skeleton_path = self.root_dir / record.path
+        skeleton_path = self._resolve_path(record.path)
         raw = read_skeleton_file(skeleton_path)
-        sequence = preprocess_skeleton_sequence(raw, target_len=self.seq_len)
+        sequence = preprocess_skeleton(raw, target_len=self.seq_len)
         x = torch.as_tensor(sequence, dtype=torch.float32)
 
         if self.transform is not None:
@@ -105,12 +108,13 @@ class NTUManifestDataset(Dataset):
 
         return {
             "x": x,
-            "subject_id": record.subject_id,
-            "action_id": record.action_id,
-            "setup_id": record.setup_id,
-            "camera_id": record.camera_id,
-            "repetition_id": record.repetition_id,
-            "split": record.split,
+            "subject": record.subject,
+            "action": record.action,
+            "setup": record.setup,
+            "camera": record.camera,
+            "repetition": record.repetition,
+            "outer_split": record.outer_split,
+            "inner_split": record.inner_split,
             "role": record.role,
             "path": record.path,
         }
