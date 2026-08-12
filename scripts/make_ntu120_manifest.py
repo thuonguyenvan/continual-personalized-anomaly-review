@@ -1,9 +1,9 @@
 """Create a CSV manifest for the NTU RGB+D 120 skeleton pilot.
 
-Usage:
-    python scripts/make_ntu120_manifest.py \
-        --skeleton-root /path/to/nturgbd120_skeletons \
-        --output data/ntu120_manifest.csv
+The official NTU120 cross-subject training subjects are further partitioned by
+subject into four disjoint sets so model selection, anomaly-threshold
+calibration, and global-normal retention evaluation do not reuse the same
+subjects.
 """
 
 from __future__ import annotations
@@ -37,26 +37,52 @@ def role(action: int) -> str:
     return "excluded"
 
 
-def make_inner_split(train_subjects: list[int], seed: int, val_fraction: float) -> tuple[set[int], set[int]]:
-    rng = random.Random(seed)
+def make_inner_splits(
+    train_subjects: list[int],
+    seed: int,
+    n_encoder_val: int,
+    n_detector_calib: int,
+    n_retention_val: int,
+) -> tuple[set[int], set[int], set[int], set[int]]:
     ids = list(train_subjects)
+    required_holdout = n_encoder_val + n_detector_calib + n_retention_val
+    if min(n_encoder_val, n_detector_calib, n_retention_val) < 1:
+        raise ValueError("all holdout counts must be >= 1")
+    if required_holdout >= len(ids):
+        raise ValueError("holdout subject counts leave no encoder-training subjects")
+
+    rng = random.Random(seed)
     rng.shuffle(ids)
-    n_val = max(1, round(len(ids) * val_fraction))
-    val = set(sorted(ids[:n_val]))
-    train = set(sorted(ids[n_val:]))
-    return train, val
+
+    p = 0
+    encoder_val = set(ids[p : p + n_encoder_val])
+    p += n_encoder_val
+    detector_calib = set(ids[p : p + n_detector_calib])
+    p += n_detector_calib
+    retention_val = set(ids[p : p + n_retention_val])
+    p += n_retention_val
+    encoder_train = set(ids[p:])
+    return encoder_train, encoder_val, detector_calib, retention_val
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description="Create leakage-resistant NTU120 pilot manifest")
     ap.add_argument("--skeleton-root", required=True)
     ap.add_argument("--output", required=True)
     ap.add_argument("--seed", type=int, default=1337)
-    ap.add_argument("--val-fraction", type=float, default=0.2)
+    ap.add_argument("--n-encoder-val", type=int, default=6)
+    ap.add_argument("--n-detector-calib", type=int, default=5)
+    ap.add_argument("--n-retention-val", type=int, default=5)
     args = ap.parse_args()
 
     metadata = scan_skeleton_files(args.skeleton_root)
-    inner_train, inner_val = make_inner_split(sorted(CSUB_TRAIN), args.seed, args.val_fraction)
+    encoder_train, encoder_val, detector_calib, retention_val = make_inner_splits(
+        sorted(CSUB_TRAIN),
+        args.seed,
+        args.n_encoder_val,
+        args.n_detector_calib,
+        args.n_retention_val,
+    )
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -72,10 +98,14 @@ def main() -> None:
             outer = "train" if m.subject in CSUB_TRAIN else "test"
             if outer == "test":
                 inner = "deployment_test"
-            elif m.subject in inner_val:
-                inner = "dev_val"
+            elif m.subject in encoder_val:
+                inner = "encoder_val"
+            elif m.subject in detector_calib:
+                inner = "detector_calib"
+            elif m.subject in retention_val:
+                inner = "retention_val"
             else:
-                inner = "dev_train"
+                inner = "encoder_train"
             writer.writerow({
                 "path": m.path,
                 "setup": m.setup,
@@ -89,8 +119,10 @@ def main() -> None:
             })
 
     print(f"Wrote {len(metadata)} rows to {out}")
-    print(f"Inner dev-train subjects ({len(inner_train)}): {sorted(inner_train)}")
-    print(f"Inner dev-val subjects ({len(inner_val)}): {sorted(inner_val)}")
+    print(f"encoder_train subjects ({len(encoder_train)}): {sorted(encoder_train)}")
+    print(f"encoder_val subjects ({len(encoder_val)}): {sorted(encoder_val)}")
+    print(f"detector_calib subjects ({len(detector_calib)}): {sorted(detector_calib)}")
+    print(f"retention_val subjects ({len(retention_val)}): {sorted(retention_val)}")
 
 
 if __name__ == "__main__":
