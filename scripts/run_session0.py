@@ -41,35 +41,34 @@ def main():
     parser.add_argument("--seq-len", type=int, default=64)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--threshold-quantile", type=float, default=0.95)
-    parser.add_argument("--checkpoint", default=None, help="Optional encoder checkpoint")
+    parser.add_argument("--checkpoint", required=True, help="Trained encoder checkpoint; random encoders are not allowed for the scientific pilot")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder = SimpleSkeletonEncoder().to(device)
-    if args.checkpoint:
-        state = torch.load(args.checkpoint, map_location=device)
-        encoder.load_state_dict(state)
+    state = torch.load(args.checkpoint, map_location=device)
+    encoder.load_state_dict(state)
     encoder.eval()
 
     global_train = NTUManifestDataset(
         args.manifest,
         args.root,
-        split="dev_train",
+        inner_split="dev_train",
         roles=["global_normal"],
         seq_len=args.seq_len,
     )
     global_val = NTUManifestDataset(
         args.manifest,
         args.root,
-        split="dev_val",
+        inner_split="dev_val",
         roles=["global_normal"],
         seq_len=args.seq_len,
     )
     deployment = NTUManifestDataset(
         args.manifest,
         args.root,
-        split="test",
-        roles=["global_normal", "personal_normal", "protected_anomaly"],
+        inner_split="deployment_test",
+        roles=["global_normal", "candidate_personal_normal", "protected_anomaly"],
         seq_len=args.seq_len,
     )
 
@@ -104,13 +103,13 @@ def main():
         writer.writerows(rows)
 
     global_scores = [r["score"] for r in rows if r["role"] == "global_normal"]
-    personal_scores = [r["score"] for r in rows if r["role"] == "personal_normal"]
+    personal_scores = [r["score"] for r in rows if r["role"] == "candidate_personal_normal"]
     protected_scores = [r["score"] for r in rows if r["role"] == "protected_anomaly"]
 
     if personal_scores and protected_scores:
         metrics = binary_metrics(personal_scores, protected_scores, threshold)
         margins = score_margin(personal_scores, protected_scores)
-        print("Session 0 personal-normal vs protected-anomaly metrics")
+        print("Session 0 candidate-personal-normal vs protected-anomaly metrics")
         for k, v in {**metrics, **margins}.items():
             print(f"{k}: {v}")
 
