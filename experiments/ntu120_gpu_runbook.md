@@ -33,8 +33,6 @@ The inner subject split is intentionally stricter than a single train/validation
 
 ## 2. Train representation encoder
 
-Run a short smoke test first on any new machine, then the full run.
-
 ```bash
 python scripts/train_encoder.py \
   --manifest data/ntu120_manifest.csv \
@@ -44,7 +42,13 @@ python scripts/train_encoder.py \
   --out outputs/ntu120_pilot_v0.1/checkpoints/simple_skeleton_encoder.pt
 ```
 
-Record the complete training log and best `encoder_val` accuracy. The encoder is a supervised global-normal action representation baseline, not the proposed continual-personalization method.
+The trainer now saves three provenance-linked artifacts:
+
+- `simple_skeleton_encoder.pt`: checkpoint bundle with `state_dict` plus training metadata;
+- `simple_skeleton_encoder.history.csv`: per-epoch train/validation history;
+- `simple_skeleton_encoder.run.json`: Git commit, manifest SHA-256, checkpoint SHA-256, seed, hyperparameters, software/platform metadata, best epoch, and best validation accuracy.
+
+Keep these files together. The encoder is a supervised global-normal action representation baseline, not the proposed continual-personalization method.
 
 ## 3. Session-0 sanity check
 
@@ -69,6 +73,8 @@ python scripts/extract_embeddings.py \
   --metadata-out outputs/ntu120_pilot_v0.1/embeddings/metadata.csv \
   --batch-size 256
 ```
+
+This additionally writes `embeddings.provenance.json`, which records the Git commit, manifest hash, checkpoint hash and embedded checkpoint metadata, embedding/metadata hashes, sequence length, sample count, and embedding dimension. This makes it possible to verify that a baseline result was produced from the intended manifest and checkpoint rather than an accidentally stale artifact.
 
 After this point, B0–B3 do not require skeleton parsing or GPU inference.
 
@@ -103,7 +109,7 @@ python scripts/summarize_personalization_results.py \
   --bootstrap-seed 1337
 ```
 
-The summarizer first averages stochastic pseudo-session orderings within each subject. Subjects, not clips or seeds, are the inferential unit. It reports both conventional normal-approximation intervals and percentile bootstrap intervals over subjects. It also produces subject-paired final-session comparisons against B0; use these paired deltas rather than claiming a method difference merely because two marginal confidence intervals do not overlap.
+Subjects, not clips or seeds, are the inferential unit. Use subject-paired final-session deltas against B0 rather than inferring method differences from non-overlap of marginal confidence intervals.
 
 ## 7. Generate core figures
 
@@ -113,14 +119,7 @@ python scripts/plot_personalization_results.py \
   --out-dir outputs/ntu120_pilot_v0.1/figures
 ```
 
-Expected figures:
-
-- `personal_fpr_by_session.png`
-- `safe_recall_by_session.png`
-- `global_fpr_by_session.png`
-- `personal_gain_vs_safety_drop.png`
-
-Line plots use the subject-bootstrap confidence intervals when available.
+Expected figures: `personal_fpr_by_session.png`, `safe_recall_by_session.png`, `global_fpr_by_session.png`, and `personal_gain_vs_safety_drop.png`.
 
 ## 8. Unit tests
 
@@ -138,12 +137,6 @@ Likewise, the fixed `retention_val` cohort is independent of threshold calibrati
 
 ## 10. Decision gate before B4/B5
 
-Do not implement a complex proposed method merely because the pipeline runs. Continue to neural/gradient adaptation only when the frozen experiments establish a meaningful problem:
+Continue to neural/gradient adaptation only when frozen experiments establish a meaningful problem: nontrivial pre-adaptation personal-normal FPR; measurable `PersonalGain`; reproducible `SafetyDrop` or margin degradation; paired subject-level evidence; and failure of threshold-only calibration to explain away the entire problem.
 
-- personal-normal FPR is nontrivial before adaptation;
-- personalization yields measurable `PersonalGain`;
-- at least some naive adaptation creates reproducible `SafetyDrop` or margin degradation;
-- paired subject-level comparisons support the effect;
-- threshold-only calibration does not explain away the entire problem.
-
-If these conditions fail, stop or reformulate the research question before spending additional GPU time.
+If these conditions fail, stop or reformulate before spending additional GPU time.
