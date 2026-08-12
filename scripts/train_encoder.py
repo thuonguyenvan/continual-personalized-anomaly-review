@@ -51,17 +51,13 @@ def run_epoch(model, loader, criterion, device, optimizer=None):
     for x, y in loader:
         x = x.to(device)
         y = y.to(device)
-
         if is_train:
             optimizer.zero_grad(set_to_none=True)
-
         logits = model(x)
         loss = criterion(logits, y)
-
         if is_train:
             loss.backward()
             optimizer.step()
-
         total_loss += float(loss.item()) * y.size(0)
         correct += int((logits.argmax(dim=1) == y).sum().item())
         total += y.size(0)
@@ -70,7 +66,7 @@ def run_epoch(model, loader, criterion, device, optimizer=None):
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Train the simple NTU120 skeleton encoder on dev-train global-normal action classes")
+    ap = argparse.ArgumentParser(description="Train NTU120 skeleton encoder without reusing detector-calibration subjects")
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--root", required=True)
     ap.add_argument("--out", default="checkpoints/simple_skeleton_encoder.pt")
@@ -87,37 +83,21 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     train_ds = NTUManifestDataset(
-        args.manifest,
-        args.root,
-        inner_split="dev_train",
-        roles=["global_normal"],
-        seq_len=args.seq_len,
+        args.manifest, args.root, inner_split="encoder_train",
+        roles=["global_normal"], seq_len=args.seq_len,
     )
     val_ds = NTUManifestDataset(
-        args.manifest,
-        args.root,
-        inner_split="dev_val",
-        roles=["global_normal"],
-        seq_len=args.seq_len,
+        args.manifest, args.root, inner_split="encoder_val",
+        roles=["global_normal"], seq_len=args.seq_len,
     )
 
     if len(train_ds) == 0 or len(val_ds) == 0:
-        raise RuntimeError("Empty train/validation split. Check manifest and dataset root.")
+        raise RuntimeError("Empty encoder_train/encoder_val split. Regenerate the manifest with the current script.")
 
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers,
-        collate_fn=collate,
-    )
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        collate_fn=collate,
-    )
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
+                              num_workers=args.num_workers, collate_fn=collate)
+    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False,
+                            num_workers=args.num_workers, collate_fn=collate)
 
     model = ActionClassifier().to(device)
     criterion = nn.CrossEntropyLoss()
@@ -136,13 +116,11 @@ def main() -> None:
         train_loss, train_acc = run_epoch(model, train_loader, criterion, device, optimizer)
         with torch.no_grad():
             val_loss, val_acc = run_epoch(model, val_loader, criterion, device)
-
         print(
             f"epoch {epoch:02d}/{args.epochs} "
             f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} "
             f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
         )
-
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             torch.save(model.encoder.state_dict(), out)
