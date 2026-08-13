@@ -72,7 +72,7 @@ def main() -> None:
     metadata_out = Path(args.run_metadata_out) if args.run_metadata_out else out.with_suffix(".run.json")
     best_val_acc = -1.0; best_epoch = -1; history = []
     manifest_hash = file_sha256(args.manifest); commit = git_commit()
-    base_metadata = {"git_commit": commit, "manifest_sha256": manifest_hash, "seed": args.seed, "seq_len": args.seq_len, "batch_size": args.batch_size, "epochs_requested": args.epochs, "lr": args.lr, "weight_decay": args.weight_decay, "global_normal_actions": GLOBAL_NORMAL_ACTIONS, "encoder_train_samples": len(train_ds), "encoder_val_samples": len(val_ds), "torch_version": torch.__version__, "python_version": sys.version, "platform": platform.platform(), "device": str(device)}
+    base_metadata = {"git_commit": commit, "manifest_sha256": manifest_hash, "seed": args.seed, "seq_len": args.seq_len, "batch_size": args.batch_size, "epochs_requested": args.epochs, "lr": args.lr, "weight_decay": args.weight_decay, "global_normal_actions": GLOBAL_NORMAL_ACTIONS, "encoder_train_samples": len(train_ds), "encoder_val_samples": len(val_ds), "torch_version": str(torch.__version__), "python_version": sys.version, "platform": platform.platform(), "device": str(device)}
 
     print(f"device: {device}"); print(f"train_samples: {len(train_ds)}"); print(f"val_samples: {len(val_ds)}"); print(f"num_classes: {len(GLOBAL_NORMAL_ACTIONS)}"); print(f"git_commit: {commit}"); print(f"manifest_sha256: {manifest_hash}")
     for epoch in range(1, args.epochs + 1):
