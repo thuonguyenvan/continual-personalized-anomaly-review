@@ -29,6 +29,8 @@ def main() -> None:
     ap.add_argument("--metadata-out", default="outputs/ntu120_pilot_v0.1/embeddings_stgcn/metadata.csv")
     ap.add_argument("--provenance-out", default="outputs/ntu120_pilot_v0.1/embeddings_stgcn/embeddings.provenance.json")
     ap.add_argument("--seq-len", type=int, default=64)
+    ap.add_argument("--preprocess-mode", choices=["frame_root", "sequence_origin"], default=None,
+                    help="Defaults to checkpoint metadata; use only to reproduce legacy checkpoints without metadata")
     ap.add_argument("--batch-size", type=int, default=128)
     ap.add_argument("--num-workers", type=int, default=2)
     args = ap.parse_args()
@@ -44,20 +46,21 @@ def main() -> None:
     model.load_state_dict(state)
     model.eval()
 
+    ckpt_mode = checkpoint_metadata.get("preprocess_mode")
+    preprocess_mode = args.preprocess_mode or ckpt_mode or "frame_root"
+    if args.preprocess_mode is not None and ckpt_mode is not None and args.preprocess_mode != ckpt_mode:
+        raise RuntimeError(f"Preprocessing mismatch: checkpoint used {ckpt_mode!r}, requested {args.preprocess_mode!r}")
+    print(f"preprocess_mode: {preprocess_mode}")
+
     ds = NTUManifestDataset(
         args.manifest,
         args.root,
         roles=["global_normal", "candidate_personal_normal", "protected_anomaly"],
         seq_len=args.seq_len,
+        preprocess_mode=preprocess_mode,
     )
-    loader = DataLoader(
-        ds,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=torch.cuda.is_available(),
-        collate_fn=collate,
-    )
+    loader = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers,
+                        pin_memory=torch.cuda.is_available(), collate_fn=collate)
 
     embeddings = []
     metadata = []
@@ -90,6 +93,7 @@ def main() -> None:
     provenance_out = Path(args.provenance_out)
     write_json(provenance_out, {
         "encoder_arch": "stgcn_compact_v1",
+        "preprocess_mode": preprocess_mode,
         "git_commit_at_extraction": git_commit(),
         "manifest": str(args.manifest),
         "manifest_sha256": file_sha256(args.manifest),
