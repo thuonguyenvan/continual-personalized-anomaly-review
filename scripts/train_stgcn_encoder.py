@@ -74,6 +74,7 @@ def main() -> None:
     ap.add_argument("--history-out", default=None)
     ap.add_argument("--run-metadata-out", default=None)
     ap.add_argument("--seq-len", type=int, default=64)
+    ap.add_argument("--preprocess-mode", choices=["frame_root", "sequence_origin"], default="frame_root")
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--lr", type=float, default=1e-3)
@@ -84,8 +85,8 @@ def main() -> None:
 
     seed_everything(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train_ds = NTUManifestDataset(args.manifest, args.root, inner_split="encoder_train", roles=["global_normal"], seq_len=args.seq_len)
-    val_ds = NTUManifestDataset(args.manifest, args.root, inner_split="encoder_val", roles=["global_normal"], seq_len=args.seq_len)
+    train_ds = NTUManifestDataset(args.manifest, args.root, inner_split="encoder_train", roles=["global_normal"], seq_len=args.seq_len, preprocess_mode=args.preprocess_mode)
+    val_ds = NTUManifestDataset(args.manifest, args.root, inner_split="encoder_val", roles=["global_normal"], seq_len=args.seq_len, preprocess_mode=args.preprocess_mode)
     if len(train_ds) == 0 or len(val_ds) == 0:
         raise RuntimeError("Empty encoder_train/encoder_val split. Regenerate the manifest.")
 
@@ -110,6 +111,7 @@ def main() -> None:
     commit = git_commit()
     base_metadata = {
         "encoder_arch": "stgcn_compact_v1",
+        "preprocess_mode": args.preprocess_mode,
         "git_commit": commit,
         "manifest_sha256": manifest_hash,
         "seed": args.seed,
@@ -129,6 +131,7 @@ def main() -> None:
     }
 
     print(f"device: {device}")
+    print(f"preprocess_mode: {args.preprocess_mode}")
     print(f"train_samples: {len(train_ds)}")
     print(f"val_samples: {len(val_ds)}")
     print(f"num_classes: {len(GLOBAL_NORMAL_ACTIONS)}")
@@ -141,11 +144,7 @@ def main() -> None:
             val_loss, val_acc = run_epoch(model, val_loader, criterion, device)
         current_lr = optimizer.param_groups[0]["lr"]
         history.append({"epoch": epoch, "lr": current_lr, "train_loss": train_loss, "train_acc": train_acc, "val_loss": val_loss, "val_acc": val_acc})
-        print(
-            f"epoch {epoch:02d}/{args.epochs} lr={current_lr:.6g} "
-            f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} "
-            f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
-        )
+        print(f"epoch {epoch:02d}/{args.epochs} lr={current_lr:.6g} train_loss={train_loss:.4f} train_acc={train_acc:.4f} val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_epoch = epoch
@@ -158,14 +157,7 @@ def main() -> None:
         w.writeheader()
         w.writerows(history)
 
-    write_json(metadata_out, {
-        **base_metadata,
-        "best_epoch": best_epoch,
-        "best_val_acc": best_val_acc,
-        "checkpoint": str(out),
-        "checkpoint_sha256": file_sha256(out),
-        "history": str(history_out),
-    })
+    write_json(metadata_out, {**base_metadata, "best_epoch": best_epoch, "best_val_acc": best_val_acc, "checkpoint": str(out), "checkpoint_sha256": file_sha256(out), "history": str(history_out)})
     print(f"best_val_acc: {best_val_acc:.4f}")
     print(f"best_epoch: {best_epoch}")
     print(f"checkpoint: {out}")
