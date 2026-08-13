@@ -16,8 +16,19 @@ def test_preprocess_skeleton_shape_and_root_centering():
     x = rng.normal(size=(20, 2, 25, 3)).astype(np.float32)
     y = preprocess_skeleton(x, target_len=32)
     assert y.shape == (32, 25, 3)
-    # Root joint is explicitly subtracted before resampling, so it stays near zero.
     assert np.allclose(y[:, 0, :], 0.0, atol=1e-5)
+
+
+def test_sequence_origin_preprocessing_preserves_root_trajectory():
+    x = np.zeros((8, 1, 25, 3), dtype=np.float32)
+    base = np.linspace(0.0, 1.0, 25, dtype=np.float32)
+    for t in range(8):
+        x[t, 0, :, 0] = base
+        x[t, 0, :, 1] = base * 0.5 - 0.1 * t
+    y = preprocess_skeleton(x, target_len=8, mode="sequence_origin")
+    assert y.shape == (8, 25, 3)
+    assert np.allclose(y[0, 0], 0.0, atol=1e-6)
+    assert y[-1, 0, 1] < -0.5
 
 
 def test_prototype_detector_orders_near_and_far_samples():
