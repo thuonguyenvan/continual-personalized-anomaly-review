@@ -26,12 +26,7 @@ class ManifestRecord:
 
 
 class NTUManifestDataset(Dataset):
-    """Dataset backed by the manifest produced by make_ntu120_manifest.py.
-
-    Expected columns:
-      path, setup, camera, subject, repetition, action,
-      outer_split, inner_split, role
-    """
+    """Dataset backed by the manifest produced by make_ntu120_manifest.py."""
 
     def __init__(
         self,
@@ -42,11 +37,13 @@ class NTUManifestDataset(Dataset):
         roles: Optional[List[str]] = None,
         subject_ids: Optional[List[int]] = None,
         seq_len: int = 64,
+        preprocess_mode: str = "frame_root",
         transform: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     ) -> None:
         self.manifest_path = Path(manifest_path)
         self.root_dir = Path(root_dir)
         self.seq_len = int(seq_len)
+        self.preprocess_mode = str(preprocess_mode)
         self.transform = transform
 
         role_set = set(roles) if roles is not None else None
@@ -100,7 +97,7 @@ class NTUManifestDataset(Dataset):
         record = self.records[index]
         skeleton_path = self._resolve_path(record.path)
         raw = read_skeleton_file(skeleton_path)
-        sequence = preprocess_skeleton(raw, target_len=self.seq_len)
+        sequence = preprocess_skeleton(raw, target_len=self.seq_len, mode=self.preprocess_mode)
         x = torch.as_tensor(sequence, dtype=torch.float32)
 
         if self.transform is not None:
