@@ -46,24 +46,20 @@ def import_infogcn(repo: Path):
 
 
 def collate(batch):
-    x = torch.stack([item["x"] for item in batch], dim=0)
-    x = x.permute(0, 3, 1, 2).unsqueeze(-1).contiguous()
+    x = torch.stack([item["x"] for item in batch], dim=0)  # [N,T,V,C]
+    x = x.permute(0, 3, 1, 2).unsqueeze(-1).contiguous()  # [N,C,T,V,M=1]
     y = torch.tensor([ACTION_TO_CLASS[item["action"]] for item in batch], dtype=torch.long)
     return x, y
-
-
-def normalize_infogcn_dtypes(model) -> None:
-    # Official InfoGCN builds A_vector from NumPy's float64 identity matrix, so on
-    # modern PyTorch the graph matmul can fail against float32 input. Keep the
-    # official architecture unchanged and cast this fixed graph tensor to float32.
-    model.A_vector = model.A_vector.to(dtype=torch.float32)
 
 
 def infogcn_loss(logits, z, y, z_prior, lambda_1: float, lambda_2: float):
     cls = F.cross_entropy(logits, y)
     present = torch.unique(y)
     means = torch.stack([z[y == c].mean(dim=0) for c in present], dim=0)
-    prior = z_prior[present].to(z.device)
+    # Official InfoGCN keeps z_prior as a plain CPU tensor rather than a registered
+    # parameter/buffer, so model.to(device) does not move it. Move the prior first,
+    # then index it with the CUDA class ids to avoid CPU/CUDA indexing mismatch.
+    prior = z_prior.to(device=z.device, dtype=z.dtype)[present]
     mmd = F.mse_loss(means, prior)
     l2 = torch.linalg.vector_norm(z.mean(dim=0), ord=2)
     return cls + lambda_2 * mmd + lambda_1 * l2, cls, mmd, l2
@@ -86,7 +82,8 @@ def run_epoch(model, loader, device, lambda_1, lambda_2, optimizer=None):
             loss.backward()
             optimizer.step()
         n = y.size(0)
-        for i, v in enumerate([loss, cls, mmd, l2]):
+        vals = [loss, cls, mmd, l2]
+        for i, v in enumerate(vals):
             sums[i] += float(v.detach().item()) * n
         correct += int((logits.argmax(1) == y).sum().item())
         total += n
@@ -144,9 +141,8 @@ def main() -> None:
         num_class=len(GLOBAL_NORMAL_ACTIONS), num_point=25, num_person=1,
         graph="graph.ntu_rgb_d.Graph", in_channels=3, drop_out=0,
         num_head=args.num_head, noise_ratio=args.noise_ratio, k=args.k, gain=args.z_prior_gain,
-    )
-    normalize_infogcn_dtypes(model)
-    model = model.to(device)
+    ).to(device)
+    model.A_vector = model.A_vector.to(device=device, dtype=torch.float32)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=args.base_lr, momentum=0.9, nesterov=True, weight_decay=args.weight_decay)
 
@@ -187,7 +183,6 @@ def main() -> None:
         "python_version": sys.version,
         "platform": platform.platform(),
         "device": str(device),
-        "adapter_dtype_fix": "A_vector_float32",
     }
 
     print(f"device: {device}")
