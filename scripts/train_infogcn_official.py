@@ -46,10 +46,17 @@ def import_infogcn(repo: Path):
 
 
 def collate(batch):
-    x = torch.stack([item["x"] for item in batch], dim=0)  # [N,T,V,C]
-    x = x.permute(0, 3, 1, 2).unsqueeze(-1).contiguous()  # [N,C,T,V,M=1]
+    x = torch.stack([item["x"] for item in batch], dim=0)
+    x = x.permute(0, 3, 1, 2).unsqueeze(-1).contiguous()
     y = torch.tensor([ACTION_TO_CLASS[item["action"]] for item in batch], dtype=torch.long)
     return x, y
+
+
+def normalize_infogcn_dtypes(model) -> None:
+    # Official InfoGCN builds A_vector from NumPy's float64 identity matrix, so on
+    # modern PyTorch the graph matmul can fail against float32 input. Keep the
+    # official architecture unchanged and cast this fixed graph tensor to float32.
+    model.A_vector = model.A_vector.to(dtype=torch.float32)
 
 
 def infogcn_loss(logits, z, y, z_prior, lambda_1: float, lambda_2: float):
@@ -79,8 +86,7 @@ def run_epoch(model, loader, device, lambda_1, lambda_2, optimizer=None):
             loss.backward()
             optimizer.step()
         n = y.size(0)
-        vals = [loss, cls, mmd, l2]
-        for i, v in enumerate(vals):
+        for i, v in enumerate([loss, cls, mmd, l2]):
             sums[i] += float(v.detach().item()) * n
         correct += int((logits.argmax(1) == y).sum().item())
         total += n
@@ -138,7 +144,9 @@ def main() -> None:
         num_class=len(GLOBAL_NORMAL_ACTIONS), num_point=25, num_person=1,
         graph="graph.ntu_rgb_d.Graph", in_channels=3, drop_out=0,
         num_head=args.num_head, noise_ratio=args.noise_ratio, k=args.k, gain=args.z_prior_gain,
-    ).to(device)
+    )
+    normalize_infogcn_dtypes(model)
+    model = model.to(device)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=args.base_lr, momentum=0.9, nesterov=True, weight_decay=args.weight_decay)
 
@@ -179,12 +187,14 @@ def main() -> None:
         "python_version": sys.version,
         "platform": platform.platform(),
         "device": str(device),
+        "adapter_dtype_fix": "A_vector_float32",
     }
 
     print(f"device: {device}")
     print(f"official_infogcn_commit: {commit}")
     print(f"train_samples: {len(train_ds)}")
     print(f"val_samples: {len(val_ds)}")
+    print(f"A_vector_dtype: {model.A_vector.dtype}")
     print("IMPORTANT: A42/A43 are not used for training or checkpoint selection.")
 
     best_val_acc = -1.0
