@@ -33,9 +33,13 @@ def import_infogcn(repo: Path):
 
 def collate(batch):
     x = torch.stack([item["x"] for item in batch], dim=0)
-    x = x.permute(0, 3, 1, 2).unsqueeze(-1).contiguous()  # [N,C,T,V,M=1]
+    x = x.permute(0, 3, 1, 2).unsqueeze(-1).contiguous()
     meta = [{k: v for k, v in item.items() if k != "x"} for item in batch]
     return x, meta
+
+
+def normalize_infogcn_dtypes(model) -> None:
+    model.A_vector = model.A_vector.to(dtype=torch.float32)
 
 
 @torch.no_grad()
@@ -70,7 +74,9 @@ def main() -> None:
         graph="graph.ntu_rgb_d.Graph", in_channels=3, drop_out=0,
         num_head=int(meta.get("num_head", 3)), noise_ratio=float(meta.get("noise_ratio", 0.5)),
         k=int(meta.get("k", 1)), gain=float(meta.get("z_prior_gain", 3.0)),
-    ).to(device)
+    )
+    normalize_infogcn_dtypes(model)
+    model = model.to(device)
     model.load_state_dict(state, strict=True)
     model.eval()
 
@@ -122,10 +128,12 @@ def main() -> None:
         "embeddings_sha256": file_sha256(out),
         "metadata": str(metadata_out),
         "metadata_sha256": file_sha256(metadata_out),
+        "adapter_dtype_fix": "A_vector_float32",
     })
 
     print(f"device: {device}")
     print(f"official_infogcn_commit: {commit}")
+    print(f"A_vector_dtype: {model.A_vector.dtype}")
     print(f"samples: {z.shape[0]}")
     print(f"embedding_dim: {z.shape[1]}")
     print(f"embeddings: {out}")
