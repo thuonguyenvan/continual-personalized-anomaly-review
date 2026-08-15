@@ -67,6 +67,7 @@ def main() -> None:
     ap.add_argument("--out", default="outputs/ntu120_pilot_v0.1/summaries/frozen_baselines_summary.csv")
     ap.add_argument("--subject-out", default="outputs/ntu120_pilot_v0.1/summaries/frozen_baselines_subject_summary.csv")
     ap.add_argument("--paired-out", default="outputs/ntu120_pilot_v0.1/summaries/frozen_baselines_paired_vs_b0.csv")
+    ap.add_argument("--baseline-method", default="B0")
     ap.add_argument("--bootstrap-reps", type=int, default=5000)
     ap.add_argument("--bootstrap-seed", type=int, default=1337)
     args = ap.parse_args()
@@ -76,9 +77,9 @@ def main() -> None:
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"missing result columns: {sorted(missing)}")
+    if args.baseline_method not in set(df["method"].astype(str)):
+        raise ValueError(f"baseline method {args.baseline_method!r} not found in input")
 
-    # First average repeated pseudo-session orderings within each subject. Subjects,
-    # not clips or order seeds, are the inferential unit.
     subject_group = ["subject", "budget", "method", "session"]
     subject_df = df.groupby(subject_group, as_index=False)[METRICS].mean(numeric_only=True)
 
@@ -107,35 +108,32 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     summary.to_csv(out, index=False)
 
-    # Paired final-session comparisons against B0 within the same target subjects.
-    # This is more informative than comparing two independent aggregate CIs.
     final_session = int(subject_df["session"].max())
     final_subject = subject_df[subject_df["session"] == final_session].copy()
     paired_rows = []
     compare_metrics = ["personal_fpr", "safe_recall", "global_fpr", "score_margin"]
     for budget in sorted(final_subject["budget"].unique()):
-        b0 = final_subject[(final_subject["budget"] == budget) & (final_subject["method"] == "B0")]
-        b0 = b0.set_index("subject")
-        if b0.empty:
+        base = final_subject[(final_subject["budget"] == budget) & (final_subject["method"] == args.baseline_method)].set_index("subject")
+        if base.empty:
             continue
         for method in sorted(final_subject["method"].unique()):
-            if method == "B0":
+            if method == args.baseline_method:
                 continue
             cur = final_subject[(final_subject["budget"] == budget) & (final_subject["method"] == method)].set_index("subject")
-            common = b0.index.intersection(cur.index)
+            common = base.index.intersection(cur.index)
             if len(common) == 0:
                 continue
-            row = {"budget": budget, "method": method, "session": final_session, "n_subjects": len(common)}
+            row = {"budget": budget, "method": method, "baseline_method": args.baseline_method, "session": final_session, "n_subjects": len(common)}
             for metric in compare_metrics:
                 mean, lo, hi = paired_bootstrap_delta(
                     cur.loc[common, metric].to_numpy(dtype=float),
-                    b0.loc[common, metric].to_numpy(dtype=float),
+                    base.loc[common, metric].to_numpy(dtype=float),
                     args.bootstrap_reps,
                     rng,
                 )
-                row[f"delta_{metric}_vs_b0"] = mean
-                row[f"delta_{metric}_vs_b0_boot_low"] = lo
-                row[f"delta_{metric}_vs_b0_boot_high"] = hi
+                row[f"delta_{metric}_vs_baseline"] = mean
+                row[f"delta_{metric}_vs_baseline_boot_low"] = lo
+                row[f"delta_{metric}_vs_baseline_boot_high"] = hi
             paired_rows.append(row)
 
     paired = pd.DataFrame(paired_rows)
@@ -152,10 +150,11 @@ def main() -> None:
     print(f"rows_input: {len(df)}")
     print(f"subjects: {subject_df['subject'].nunique()}")
     print(f"final_session: {final_session}")
+    print(f"baseline_method: {args.baseline_method}")
     print(final[cols].sort_values(["budget", "method"]).to_string(index=False))
     print(f"subject_summary: {subject_out}")
     print(f"summary: {out}")
-    print(f"paired_vs_b0: {paired_out}")
+    print(f"paired_vs_baseline: {paired_out}")
     print(f"bootstrap_reps: {args.bootstrap_reps}")
 
 
