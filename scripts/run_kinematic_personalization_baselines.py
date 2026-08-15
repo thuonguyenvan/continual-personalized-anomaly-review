@@ -114,12 +114,11 @@ def main() -> None:
         base_p_scores_all = score(base_model, z[p_idx])
         base_s_scores = score(base_model, z[s_idx])
         base_met = evaluate(base_p_scores_all, base_s_scores, base_ret_scores, base_threshold)
+        base_fixed_fpr = base_met["personal_fpr"]
 
         for seed in args.order_seeds:
             sessions = split_sessions(p_idx, args.sessions, seed + subject * 1009)
             for budget in args.budgets:
-                confirmed: List[int] = []
-
                 # Shared caregiver-feedback trajectory: alerts are defined by frozen K0.
                 chosen_by_session = []
                 for t, arrival in enumerate(sessions, start=1):
@@ -135,13 +134,19 @@ def main() -> None:
                 for method in args.methods:
                     threshold = base_threshold
                     model = base_model
-                    confirmed = []
+                    confirmed: List[int] = []
 
                     output.append({
                         "subject": subject, "order_seed": seed, "budget": budget, "method": method, "session": 0,
                         "feedback_available": 0, "feedback_used": 0, "confirmed_cumulative": 0,
                         "remaining_personal": len(p_idx), "threshold": threshold,
-                        **base_met, "personal_gain": 0.0, "safety_drop": 0.0,
+                        **base_met,
+                        "personal_fpr_residual": base_fixed_fpr,
+                        "personal_fpr_fixed": base_fixed_fpr,
+                        "feedback_censoring_gain": 0.0,
+                        "personal_gain": 0.0,
+                        "personal_gain_fixed": 0.0,
+                        "safety_drop": 0.0,
                     })
 
                     for t, (candidates, chosen) in enumerate(chosen_by_session, start=1):
@@ -159,13 +164,20 @@ def main() -> None:
                         confirmed_set = set(confirmed)
                         remaining = np.asarray([i for i in p_idx if int(i) not in confirmed_set], dtype=np.int64)
                         p_eval = remaining if len(remaining) else p_idx
+
                         met = evaluate(score(model, z[p_eval]), score(model, z[s_idx]), score(model, z_ret), threshold)
+                        fixed_fpr = float(np.mean(score(model, z[p_idx]) > threshold))
+                        residual_fpr = met["personal_fpr"]
                         output.append({
                             "subject": subject, "order_seed": seed, "budget": budget, "method": method, "session": t,
                             "feedback_available": len(candidates), "feedback_used": len(chosen),
                             "confirmed_cumulative": len(confirmed), "remaining_personal": len(remaining),
                             "threshold": threshold, **met,
-                            "personal_gain": base_met["personal_fpr"] - met["personal_fpr"],
+                            "personal_fpr_residual": residual_fpr,
+                            "personal_fpr_fixed": fixed_fpr,
+                            "feedback_censoring_gain": fixed_fpr - residual_fpr,
+                            "personal_gain": base_fixed_fpr - residual_fpr,
+                            "personal_gain_fixed": base_fixed_fpr - fixed_fpr,
                             "safety_drop": base_met["safe_recall"] - met["safe_recall"],
                         })
 
@@ -186,6 +198,7 @@ def main() -> None:
     print(f"personal_samples_per_subject: min={min(personal_counts)} median={float(np.median(personal_counts)):.1f} max={max(personal_counts)}")
     print("feedback_regime: shared frozen-K0 alerts (controlled comparison)")
     print("K0=no adaptation; K1=threshold-only; K2=OCSVM refit with confirmed personal normals")
+    print("metric_note: personal_fpr is the residual unconfirmed pool; personal_fpr_fixed evaluates the same full A42 pool at every session")
     print(f"rows_written: {len(output)}")
     print(f"output: {out}")
 
