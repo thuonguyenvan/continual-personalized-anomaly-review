@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 
-METRICS = [
+BASE_METRICS = [
     "personal_fpr",
     "safe_recall",
     "safe_fnr",
@@ -17,6 +17,12 @@ METRICS = [
     "score_margin",
     "feedback_used",
     "confirmed_cumulative",
+]
+OPTIONAL_METRICS = [
+    "personal_fpr_residual",
+    "personal_fpr_fixed",
+    "feedback_censoring_gain",
+    "personal_gain_fixed",
 ]
 
 
@@ -40,13 +46,7 @@ def bootstrap_mean_ci(a: np.ndarray, reps: int, rng: np.random.Generator) -> tup
     return float(lo), float(hi)
 
 
-def paired_bootstrap_delta(
-    a: np.ndarray,
-    b: np.ndarray,
-    reps: int,
-    rng: np.random.Generator,
-) -> tuple[float, float, float]:
-    """Return mean(a-b) and subject-paired bootstrap CI."""
+def paired_bootstrap_delta(a: np.ndarray, b: np.ndarray, reps: int, rng: np.random.Generator) -> tuple[float, float, float]:
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
     keep = np.isfinite(a) & np.isfinite(b)
@@ -73,7 +73,8 @@ def main() -> None:
     args = ap.parse_args()
 
     df = pd.read_csv(args.input)
-    required = {"subject", "order_seed", "budget", "method", "session", *METRICS}
+    metrics = BASE_METRICS + [m for m in OPTIONAL_METRICS if m in df.columns]
+    required = {"subject", "order_seed", "budget", "method", "session", *BASE_METRICS}
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"missing result columns: {sorted(missing)}")
@@ -81,7 +82,7 @@ def main() -> None:
         raise ValueError(f"baseline method {args.baseline_method!r} not found in input")
 
     subject_group = ["subject", "budget", "method", "session"]
-    subject_df = df.groupby(subject_group, as_index=False)[METRICS].mean(numeric_only=True)
+    subject_df = df.groupby(subject_group, as_index=False)[metrics].mean(numeric_only=True)
 
     subject_out = Path(args.subject_out)
     subject_out.parent.mkdir(parents=True, exist_ok=True)
@@ -93,7 +94,7 @@ def main() -> None:
     for group_values, g in subject_df.groupby(keys, sort=True):
         row = dict(zip(keys, group_values))
         row["n_subjects"] = int(g["subject"].nunique())
-        for m in METRICS:
+        for m in metrics:
             values = g[m].dropna().to_numpy(dtype=float)
             row[f"{m}_mean"] = float(np.mean(values)) if len(values) else float("nan")
             row[f"{m}_std"] = float(np.std(values, ddof=1)) if len(values) > 1 else float("nan")
@@ -112,6 +113,11 @@ def main() -> None:
     final_subject = subject_df[subject_df["session"] == final_session].copy()
     paired_rows = []
     compare_metrics = ["personal_fpr", "safe_recall", "global_fpr", "score_margin"]
+    if "personal_fpr_fixed" in metrics:
+        compare_metrics.append("personal_fpr_fixed")
+    if "personal_gain_fixed" in metrics:
+        compare_metrics.append("personal_gain_fixed")
+
     for budget in sorted(final_subject["budget"].unique()):
         base = final_subject[(final_subject["budget"] == budget) & (final_subject["method"] == args.baseline_method)].set_index("subject")
         if base.empty:
@@ -147,6 +153,10 @@ def main() -> None:
         "personal_fpr_mean", "safe_recall_mean", "global_fpr_mean",
         "personal_gain_mean", "safety_drop_mean", "score_margin_mean",
     ]
+    for c in ["personal_fpr_fixed_mean", "personal_gain_fixed_mean", "feedback_censoring_gain_mean"]:
+        if c in final.columns:
+            cols.append(c)
+
     print(f"rows_input: {len(df)}")
     print(f"subjects: {subject_df['subject'].nunique()}")
     print(f"final_session: {final_session}")
